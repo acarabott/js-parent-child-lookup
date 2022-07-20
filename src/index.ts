@@ -30,26 +30,26 @@ const defObjs = () => {
     const parentsObj: Record<Parent["id"], Parent> = parents.reduce((accum, cur) => ({ ...accum, [cur.id]: cur }), {});
     const childrenObj: Record<Child["id"], Child> = children.reduce((accum, cur) => ({ ...accum, [cur.id]: cur }), {});
 
-    return { parentsObj, childrenObj };
+    return { parentsObj, childrenObj, parents, children };
 };
 
-const defCachedFind = <T extends ID>(items: T[]) => {
-    const cache: Record<ID["id"], T> = {};
+const defCachedFind = (parents: Parent[]) => {
+    const cache: Record<Parent["id"], Parent> = {};
 
-    return (id: T["id"]) => {
-        let cached: T | undefined = cache[id];
-        if (cached !== undefined) {
-            return cached;
+    return (parentId: Parent["id"]) => {
+        const found: Parent | undefined = cache[parentId];
+        if (found !== undefined) {
+            return found;
         }
 
-        for (const item of items) {
-            if (item.id === id) {
-                cache[item.id] = item;
-                return item;
+        for (const parent of parents) {
+            if (parent.id === parentId) {
+                cache[parent.id] = parent;
+                return parent;
             }
         }
 
-        throw new Error("Item not found");
+        throw new Error("Parent not found");
     };
 };
 
@@ -83,9 +83,52 @@ suite(
             const relationships: Array<[Child, Parent]> = [];
             for (const child of children) {
                 const parent = parents.find((parent) => parent.id === child.parentId);
-                if (parent === undefined) {
+                if (parent !== undefined) {
+                    relationships.push([child, parent]);
+                } else {
                     throw new Error("Parent not found");
                 }
+            }
+            return relationships;
+        };
+    }),
+
+    add("find helper", () => {
+        const { children, parents } = defArrays();
+
+        const findOrThrow = <T>(things: T[], predicate: (thing: T) => boolean) => {
+            const found = things.find(predicate);
+            if (found !== undefined) {
+                return found;
+            }
+            throw new Error("Could not find item");
+        };
+
+        return () => {
+            const relationships: Array<[Child, Parent]> = [];
+            for (const child of children) {
+                const parent = findOrThrow(parents, (parent) => parent.id === child.parentId);
+                relationships.push([child, parent]);
+            }
+            return relationships;
+        };
+    }),
+
+    add("find helper - specific", () => {
+        const { children, parents } = defArrays();
+
+        const findOrThrowSpecific = (parents: Parent[], id: Parent["id"]) => {
+            const parent = parents.find((parent) => parent.id === id);
+            if (parent !== undefined) {
+                return parent;
+            }
+            throw new Error("Could not find item");
+        };
+
+        return () => {
+            const relationships: Array<[Child, Parent]> = [];
+            for (const child of children) {
+                const parent = findOrThrowSpecific(parents, child.parentId);
                 relationships.push([child, parent]);
             }
             return relationships;
@@ -172,36 +215,6 @@ suite(
         };
     }),
 
-    add("for of cached - in check", () => {
-        const { children, parents } = defArrays();
-
-        return () => {
-            const cache: Record<Parent["id"], Parent> = {};
-            const relationships: Array<[Child, Parent]> = [];
-
-            for (const child of children) {
-                if (child.parentId in cache) {
-                    relationships.push([child, cache[child.parentId]]);
-                } else {
-                    let found: Parent | undefined = undefined;
-                    for (const parent of parents) {
-                        if (parent.id === child.parentId) {
-                            found = parent;
-                            cache[found.id] = found;
-                            relationships.push([child, found]);
-                        }
-                    }
-
-                    if (found === undefined) {
-                        throw new Error("Parent not found");
-                    }
-                }
-            }
-
-            return relationships;
-        };
-    }),
-
     add("for cached", () => {
         const { children, parents } = defArrays();
 
@@ -232,37 +245,6 @@ suite(
         };
     }),
 
-    add("for cached - in check", () => {
-        const { children, parents } = defArrays();
-
-        return () => {
-            const cache: Record<Parent["id"], Parent> = {};
-            const relationships: Array<[Child, Parent]> = [];
-
-            for (const child of children) {
-                if (child.parentId in cache) {
-                    relationships.push([child, parents[child.parentId]]);
-                } else {
-                    let found: Parent | undefined = undefined;
-
-                    for (let i = 0; i < parents.length; i++) {
-                        if (parents[i].id === child.parentId) {
-                            found = parents[i];
-                            cache[found.id] = found;
-                            relationships.push([child, found]);
-                        }
-                    }
-
-                    if (found === undefined) {
-                        throw new Error("Parent not found");
-                    }
-                }
-            }
-
-            return relationships;
-        };
-    }),
-
     add("objects", () => {
         const { childrenObj, parentsObj } = defObjs();
 
@@ -279,7 +261,7 @@ suite(
         };
     }),
 
-    add("cache func - for", () => {
+    add("cache func", () => {
         const { children, parents } = defArrays();
 
         return () => {
@@ -296,7 +278,7 @@ suite(
         };
     }),
 
-    add("cache map func - for", () => {
+    add("cache func: map", () => {
         const { children, parents } = defArrays();
 
         return () => {
@@ -309,6 +291,22 @@ suite(
                 relationships.push([child, parent]);
             }
 
+            return relationships;
+        };
+    }),
+
+    add("array + object (cheating)", () => {
+        const { children, parentsObj } = defObjs();
+
+        return () => {
+            const relationships: Array<[Child, Parent]> = [];
+            for (const child of children) {
+                if (child.parentId in parentsObj) {
+                    relationships.push([child, parentsObj[child.parentId]]);
+                } else {
+                    throw new Error("no parent found");
+                }
+            }
             return relationships;
         };
     }),
